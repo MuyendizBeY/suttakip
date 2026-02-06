@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Süt Takip Sistemi - Gelişmiş Versiyon</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
+
+<style>
+body{font-family:Arial;background:#f4f4f4;padding:20px}
+.panel{background:#fff;padding:20px;border-radius:8px;max-width:1200px;margin:auto;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+.hidden{display:none}
+button{padding:8px 14px;margin:5px;cursor:pointer;border:none;border-radius:4px;background:#667eea;color:white;transition:0.3s}
+button:hover{background:#5568d3}
+input,select{padding:6px;margin:5px;border:1px solid #ddd;border-radius:4px;width:calc(100% - 12px);max-width:300px;box-sizing:border-box}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+table th{background:#667eea;color:white;padding:10px;border:1px solid #ddd;font-size:14px}
+table td{padding:8px;border:1px solid #ddd;font-size:13px}
+table tr:nth-child(even){background:#f9f9f9}
+.adminTab{margin-top:20px}
+.tab-buttons button{background:#e0e0e0;color:#333}
+.tab-buttons button.active{background:#667eea;color:white}
+.stats-box{background:#f0f0f0;padding:15px;border-radius:5px;margin:10px 0}
+.stats-item{display:inline-block;margin-right:20px;font-weight:bold}
+.chart-type-btn{padding:10px 20px;margin:5px;border:2px solid #667eea;background:white;color:#667eea;font-weight:bold;transition:0.3s}
+.chart-type-btn:hover{background:#f0f0ff}
+.chart-type-btn.active{background:#667eea;color:white;transform:scale(1.05)}
+
+/* MOBİL UYUMLULUK */
+@media (max-width: 768px) {
+  body{padding:10px}
+  .panel{padding:15px;margin:10px auto}
+  
+  h2,h3,h4{font-size:1.2em}
+  
+  button{padding:10px 12px;margin:3px;font-size:13px;width:auto}
+  
+  input,select{width:100%;max-width:100%;margin:5px 0}
+  
+  /* Tab butonları */
+  .tab-buttons{display:flex;flex-wrap:wrap;gap:5px}
+  .tab-buttons button{flex:1;min-width:100px;font-size:12px;padding:8px 5px}
+  
+  /* Grafik türü butonları */
+  .chart-type-btn{padding:8px 12px;font-size:12px;display:block;width:100%;margin:5px 0}
+  
+  /* İstatistik kutusu */
+  .stats-box{padding:10px;font-size:12px}
+  .stats-item{display:block;margin:5px 0;font-size:13px}
+  
+  /* Tablo responsive */
+  table{font-size:11px;display:block;overflow-x:auto;white-space:nowrap}
+  table th,table td{padding:6px 4px}
+  
+  /* Form elemanları */
+  #addMemberForm{padding:10px}
+  #addMemberForm input{width:100%;margin:5px 0}
+  
+  /* Arama kutusu */
+  #searchMember{width:100%!important;float:none!important;margin:10px 0}
+  
+  /* Filtre elemanları */
+  #memberFilter,#monthFilterAdmin,#monthSelect{width:100%;margin:5px 0}
+  
+  /* Canvas grafik */
+  canvas{max-width:100%;height:auto!important}
+  
+  /* Buton grupları */
+  .panel > button{display:inline-block;width:auto;min-width:120px}
+}
+
+@media (max-width: 480px) {
+  h2{font-size:1.1em}
+  h3,h4{font-size:1em}
+  
+  button{font-size:12px;padding:8px 10px}
+  
+  .tab-buttons button{font-size:11px;padding:6px 4px;min-width:80px}
+  
+  table{font-size:10px}
+  table th,table td{padding:4px 2px}
+  
+  .stats-item{font-size:11px}
+}
+</style>
+</head>
+
+<body>
+
+<div id="home" class="panel">
+  <h2>🥛 Süt Takip Sistemi</h2>
+  <p>Gelişmiş yönetim ve takip sistemi</p>
+  <button onclick="show('adminLogin')">🔐 Yönetici Girişi</button>
+  <button onclick="show('userLogin')">👤 Üye Girişi</button>
+</div>
+
+<div id="adminLogin" class="panel hidden">
+  <h3>Yönetici Girişi</h3>
+  <input id="adminUser" placeholder="Kullanıcı"><br>
+  <input id="adminPass" type="password" placeholder="Şifre"><br>
+  <button onclick="adminLogin()">Giriş</button>
+  <button onclick="back()">Geri</button>
+</div>
+
+<div id="adminPanel" class="panel hidden">
+  <h3>⚙️ Yönetici Paneli</h3>
+
+  <!-- SEKMELER -->
+  <div class="tab-buttons" style="margin-bottom:20px">
+    <button onclick="showTab('import')" id="tabImport">📥 Veri Yükle</button>
+    <button onclick="showTab('members')" id="tabMembers">👥 Üye Listesi</button>
+    <button onclick="showTab('milkData')" id="tabMilk">🥛 Süt Verileri</button>
+  </div>
+
+  <!-- SEKME 1: VERİ YÜKLEME -->
+  <div id="importTab" class="adminTab">
+    <h4>Excel Veri Yükleme</h4>
+    <div style="background:#f9f9f9;padding:15px;border-radius:5px">
+      <p><b>📋 Üye Excel Yükle</b></p>
+      <input type="file" id="memberExcel" accept=".xlsx,.xls">
+      <button onclick="importMembers()">Yükle</button>
+      <p style="font-size:12px;color:#666">Format: Üye No | Ad Soyad | TC Son 4</p>
+    </div>
+
+    <div style="background:#f9f9f9;padding:15px;border-radius:5px;margin-top:15px">
+      <p><b>📊 Süt Excel Yükle</b></p>
+      <input type="file" id="milkExcel" accept=".xlsx,.xls">
+      <button onclick="importMilk()">Yükle</button>
+      <p style="font-size:12px;color:#666">Format: Tarih | Üye No | Sabah | Akşam | Toplam</p>
+    </div>
+  </div>
+
+  <!-- SEKME 2: ÜYE LİSTESİ -->
+  <div id="membersTab" class="adminTab hidden">
+    <h4>Üye Yönetimi</h4>
+    <div style="margin-bottom:10px">
+      <button onclick="showAddMember()">➕ Yeni Üye Ekle</button>
+      <button onclick="loadMembers()">🔄 Yenile</button>
+    </div>
+    <div style="margin-bottom:10px">
+      <input id="searchMember" placeholder="🔍 Üye Ara..." oninput="loadMembers()" style="width:100%;max-width:300px">
+    </div>
+
+    <!-- YENİ ÜYE EKLEME FORMU -->
+    <div id="addMemberForm" style="display:none;background:#e8f4f8;padding:15px;margin-bottom:15px;border-radius:5px;border:2px solid #4facfe">
+      <h4>➕ Yeni Üye Ekle</h4>
+      <input id="newMemberNo" placeholder="Üye No" style="margin:5px"><br>
+      <input id="newMemberName" placeholder="Ad Soyad" style="margin:5px"><br>
+      <input id="newMemberTC" placeholder="TC Son 4 Hane" maxlength="4" style="margin:5px"><br>
+      <button onclick="addNewMember()">💾 Kaydet</button>
+      <button onclick="hideAddMember()" style="background:#999">❌ İptal</button>
+    </div>
+
+    <div style="overflow-x:auto">
+      <table id="membersTable">
+        <thead>
+          <tr>
+            <th>Üye No</th>
+            <th>Ad Soyad</th>
+            <th>TC Son 4</th>
+            <th>İşlemler</th>
+          </tr>
+        </thead>
+        <tbody id="membersList"></tbody>
+      </table>
+    </div>
+    <div id="memberCount" style="margin-top:10px;color:#666;font-size:14px"></div>
+  </div>
+
+  <!-- SEKME 3: SÜT VERİLERİ -->
+  <div id="milkDataTab" class="adminTab hidden">
+    <h4>Süt Verileri Yönetimi</h4>
+    
+    <!-- YENİ SÜT KAYDI EKLEME FORMU -->
+    <div style="margin-bottom:15px">
+      <button onclick="showAddMilk()">➕ Yeni Kayıt Ekle</button>
+    </div>
+    
+    <div id="addMilkForm" style="display:none;background:#e8f4f8;padding:15px;margin-bottom:15px;border-radius:5px;border:2px solid #4facfe">
+      <h4 id="milkFormTitle">➕ Yeni Süt Kaydı Ekle</h4>
+      <input type="hidden" id="editMilkIndex">
+      <input type="hidden" id="editMilkMemberNo">
+      
+      <label>Tarih:</label><br>
+      <input type="date" id="newMilkDate" style="margin:5px 0"><br>
+      
+      <label>Üye Seç:</label><br>
+      <select id="newMilkMember" style="margin:5px 0;width:100%;max-width:300px">
+        <option value="">Üye Seçin</option>
+      </select><br>
+      
+      <label>Sabah (kg):</label><br>
+      <input type="number" id="newMilkSabah" placeholder="Sabah Süt" step="0.1" min="0" style="margin:5px 0"><br>
+      
+      <label>Akşam (kg):</label><br>
+      <input type="number" id="newMilkAksam" placeholder="Akşam Süt" step="0.1" min="0" style="margin:5px 0"><br>
+      
+      <button onclick="saveMilkRecord()">💾 Kaydet</button>
+      <button onclick="hideAddMilk()" style="background:#999">❌ İptal</button>
+    </div>
+    
+    <div style="margin-bottom:10px">
+      <select id="memberFilter" onchange="loadMilkData()">
+        <option value="">🔽 Tüm Üyeler</option>
+      </select>
+      <select id="monthFilterAdmin" onchange="loadMilkData()">
+        <option value="all">📅 Tüm Aylar</option>
+        <option value="0">Ocak</option>
+        <option value="1">Şubat</option>
+        <option value="2">Mart</option>
+        <option value="3">Nisan</option>
+        <option value="4">Mayıs</option>
+        <option value="5">Haziran</option>
+        <option value="6">Temmuz</option>
+        <option value="7">Ağustos</option>
+        <option value="8">Eylül</option>
+        <option value="9">Ekim</option>
+        <option value="10">Kasım</option>
+        <option value="11">Aralık</option>
+      </select>
+      <button onclick="loadMilkData()">🔄 Yenile</button>
+      <button onclick="exportMilkData()">📥 Excel'e Aktar</button>
+    </div>
+
+    <div id="milkStats" class="stats-box"></div>
+
+    <div style="overflow-x:auto">
+      <table id="milkTable">
+        <thead>
+          <tr>
+            <th>Tarih</th>
+            <th>Üye No</th>
+            <th>Üye Adı</th>
+            <th>Sabah (kg)</th>
+            <th>Akşam (kg)</th>
+            <th>Toplam (kg)</th>
+            <th>İşlemler</th>
+          </tr>
+        </thead>
+        <tbody id="milkDataList"></tbody>
+      </table>
+    </div>
+    <div id="milkCount" style="margin-top:10px;color:#666;font-size:14px"></div>
+  </div>
+
+  <br><br>
+  <button onclick="logout()">🚪 Çıkış Yap</button>
+</div>
+
+<div id="userLogin" class="panel hidden">
+  <h3>Üye Girişi</h3>
+  <input id="userNo" placeholder="Üye No"><br>
+  <input id="userPass" type="password" placeholder="TC Son 4"><br>
+  <button onclick="userLogin()">Giriş</button>
+  <button onclick="back()">Geri</button>
+</div>
+
+<div id="userPanel" class="panel hidden">
+  <h3 id="userTitle"></h3>
+
+  <!-- AYLIK İSTATİSTİKLER -->
+  <div id="userStats" class="stats-box" style="margin:15px 0"></div>
+
+  <!-- AY FİLTRESİ -->
+  <label>Ay:</label>
+  <select id="monthSelect" onchange="redraw()">
+    <option value="all">Tüm Aylar</option>
+    <option value="0">Ocak</option>
+    <option value="1">Şubat</option>
+    <option value="2">Mart</option>
+    <option value="3">Nisan</option>
+    <option value="4">Mayıs</option>
+    <option value="5">Haziran</option>
+    <option value="6">Temmuz</option>
+    <option value="7">Ağustos</option>
+    <option value="8">Eylül</option>
+    <option value="9">Ekim</option>
+    <option value="10">Kasım</option>
+    <option value="11">Aralık</option>
+  </select>
+
+  <!-- GRAFİK TÜRÜ -->
+  <div style="margin:15px 0">
+    <button id="btnSabah" onclick="setType('sabah')" class="chart-type-btn">🌅 Sabah</button>
+    <button id="btnAksam" onclick="setType('aksam')" class="chart-type-btn">🌙 Akşam</button>
+    <button id="btnToplam" onclick="setType('toplam')" class="chart-type-btn active">🥛 Toplam</button>
+  </div>
+
+  <canvas id="chart" height="120"></canvas>
+  <br>
+  <button onclick="logout()">🚪 Çıkış Yap</button>
+</div>
+
+<script>
+const members = JSON.parse(localStorage.getItem("members") || "{}");
+const milkData = JSON.parse(localStorage.getItem("milkData") || "{}");
+let chart;
+let activeUser = null;
+let activeType = "toplam";
+let currentTab = "import";
+
+/* ---------- NAV ---------- */
+function show(id){
+  document.querySelectorAll(".panel").forEach(p=>p.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+}
+function back(){ show("home"); }
+function logout(){
+  activeUser = null;
+  if(chart) chart.destroy();
+  show("home");
+}
+
+/* ---------- ADMIN TABS ---------- */
+function showTab(tab){
+  currentTab = tab;
+  document.querySelectorAll(".adminTab").forEach(t=>t.classList.add("hidden"));
+  document.querySelectorAll(".tab-buttons button").forEach(b=>b.classList.remove("active"));
+  
+  if(tab==='import'){
+    document.getElementById("importTab").classList.remove("hidden");
+    document.getElementById("tabImport").classList.add("active");
+  }else if(tab==='members'){
+    document.getElementById("membersTab").classList.remove("hidden");
+    document.getElementById("tabMembers").classList.add("active");
+    loadMembers();
+  }else if(tab==='milkData'){
+    document.getElementById("milkDataTab").classList.remove("hidden");
+    document.getElementById("tabMilk").classList.add("active");
+    populateMemberFilter();
+    loadMilkData();
+  }
+}
+
+/* ---------- LOGIN ---------- */
+function adminLogin(){
+  if(adminUser.value==="admin" && adminPass.value==="1234"){
+    show("adminPanel");
+    showTab("import");
+    adminUser.value = "";
+    adminPass.value = "";
+  } else alert("❌ Hatalı yönetici girişi");
+}
+
+function userLogin(){
+  const no = userNo.value.trim();
+  const pass = userPass.value.trim();
+  if(!members[no] || members[no].tc !== pass){
+    alert("❌ Hatalı üye bilgisi"); return;
+  }
+  activeUser = no;
+  activeType = "toplam";
+  show("userPanel");
+  userTitle.innerText = members[no].name + " - Süt Takibi";
+  monthSelect.value = "all";
+  redraw();
+  userNo.value = "";
+  userPass.value = "";
+}
+
+/* ---------- DATE ---------- */
+function excelDateToJSDate(serial){
+  const utc_days = Math.floor(serial - 25569);
+  return new Date(utc_days * 86400 * 1000);
+}
+
+function formatDate(date){
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2,'0');
+  const month = String(d.getMonth()+1).padStart(2,'0');
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+/* ---------- MEMBER IMPORT ---------- */
+function importMembers(){
+  const f = memberExcel.files[0];
+  if(!f) return alert("Dosya seçilmedi");
+
+  const r = new FileReader();
+  r.onload = e=>{
+    const wb = XLSX.read(e.target.result,{type:"binary"});
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
+
+    let count = 0;
+    rows.slice(1).forEach(row=>{
+      if(!row[0]) return;
+      members[String(row[0])] = {
+        name: row[1],
+        tc: String(row[2])
+      };
+      count++;
+    });
+
+    localStorage.setItem("members",JSON.stringify(members));
+    alert(`✅ ${count} üye başarıyla yüklendi!`);
+    memberExcel.value = ""; // Input'u temizle
+  };
+  r.readAsBinaryString(f);
+}
+
+/* ---------- MILK IMPORT ---------- */
+function importMilk(){
+  const f = milkExcel.files[0];
+  if(!f) return alert("Dosya seçilmedi");
+
+  const r = new FileReader();
+  r.onload = e=>{
+    const wb = XLSX.read(e.target.result,{type:"binary"});
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
+
+    let count = 0;
+    rows.slice(1).forEach(row=>{
+      const rawDate = row[0];
+      const no = String(row[1]||"").trim();
+      if(!rawDate || !no) return;
+
+      const date = typeof rawDate==="number" ? excelDateToJSDate(rawDate) : new Date(rawDate);
+      const sabah = Number(row[2]||0);
+      const aksam = Number(row[3]||0);
+      const toplam = Number(row[4]||(sabah+aksam));
+
+      if(!milkData[no]) milkData[no]=[];
+      milkData[no].push({date,sabah,aksam,toplam});
+      count++;
+    });
+
+    localStorage.setItem("milkData",JSON.stringify(milkData));
+    alert(`✅ ${count} süt kaydı başarıyla yüklendi!`);
+    milkExcel.value = ""; // Input'u temizle
+  };
+  r.readAsBinaryString(f);
+}
+
+/* ---------- MEMBER MANAGEMENT ---------- */
+function showAddMember(){
+  document.getElementById("addMemberForm").style.display = "block";
+}
+
+function hideAddMember(){
+  document.getElementById("addMemberForm").style.display = "none";
+  document.getElementById("newMemberNo").value = "";
+  document.getElementById("newMemberName").value = "";
+  document.getElementById("newMemberTC").value = "";
+}
+
+function addNewMember(){
+  const no = document.getElementById("newMemberNo").value.trim();
+  const name = document.getElementById("newMemberName").value.trim();
+  const tc = document.getElementById("newMemberTC").value.trim();
+  
+  if(!no || !name || !tc){
+    alert("Lütfen tüm alanları doldurun!");
+    return;
+  }
+  
+  if(tc.length !== 4 || isNaN(tc)){
+    alert("TC son 4 hane 4 rakam olmalıdır!");
+    return;
+  }
+  
+  if(members[no]){
+    alert("Bu üye numarası zaten kayıtlı!");
+    return;
+  }
+  
+  members[no] = {name, tc};
+  localStorage.setItem("members", JSON.stringify(members));
+  alert("Yeni üye başarıyla eklendi!");
+  hideAddMember();
+  loadMembers();
+}
+
+function deleteMember(no){
+  if(!confirm(`${members[no].name} üyesini silmek istediğinizden emin misiniz?`)) return;
+  delete members[no];
+  if(milkData[no]) delete milkData[no];
+  localStorage.setItem("members", JSON.stringify(members));
+  localStorage.setItem("milkData", JSON.stringify(milkData));
+  alert("Üye silindi!");
+  loadMembers();
+}
+
+function loadMembers(){
+  const search = (document.getElementById("searchMember").value || "").toLowerCase();
+  const tbody = document.getElementById("membersList");
+  tbody.innerHTML = "";
+  
+  let count = 0;
+  Object.keys(members).forEach(no=>{
+    const m = members[no];
+    if(search && !no.includes(search) && !m.name.toLowerCase().includes(search)) return;
+    
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${no}</td>
+      <td>${m.name}</td>
+      <td>${m.tc}</td>
+      <td>
+        <button onclick="deleteMember('${no}')" style="background:#ff4444;padding:4px 8px;font-size:12px">🗑️ Sil</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    count++;
+  });
+  
+  document.getElementById("memberCount").innerText = `Toplam: ${count} üye`;
+}
+
+/* ---------- MILK DATA DISPLAY ---------- */
+function populateMemberFilter(){
+  const select = document.getElementById("memberFilter");
+  const selectNew = document.getElementById("newMilkMember");
+  
+  select.innerHTML = '<option value="">🔽 Tüm Üyeler</option>';
+  selectNew.innerHTML = '<option value="">Üye Seçin</option>';
+  
+  Object.keys(members).forEach(no=>{
+    const opt = document.createElement("option");
+    opt.value = no;
+    opt.innerText = `${no} - ${members[no].name}`;
+    select.appendChild(opt);
+    
+    const opt2 = opt.cloneNode(true);
+    selectNew.appendChild(opt2);
+  });
+}
+
+function showAddMilk(){
+  document.getElementById("addMilkForm").style.display = "block";
+  document.getElementById("milkFormTitle").innerText = "➕ Yeni Süt Kaydı Ekle";
+  document.getElementById("editMilkIndex").value = "";
+  document.getElementById("editMilkMemberNo").value = "";
+  document.getElementById("newMilkDate").value = "";
+  document.getElementById("newMilkMember").value = "";
+  document.getElementById("newMilkSabah").value = "";
+  document.getElementById("newMilkAksam").value = "";
+  populateMemberFilter();
+}
+
+function hideAddMilk(){
+  document.getElementById("addMilkForm").style.display = "none";
+}
+
+function saveMilkRecord(){
+  const editIndex = document.getElementById("editMilkIndex").value;
+  const editMemberNo = document.getElementById("editMilkMemberNo").value;
+  const dateInput = document.getElementById("newMilkDate").value;
+  const memberNo = editMemberNo || document.getElementById("newMilkMember").value;
+  const sabah = parseFloat(document.getElementById("newMilkSabah").value) || 0;
+  const aksam = parseFloat(document.getElementById("newMilkAksam").value) || 0;
+  
+  if(!dateInput || !memberNo){
+    alert("❌ Lütfen tarih ve üye seçin!");
+    return;
+  }
+  
+  if(!members[memberNo]){
+    alert("❌ Geçersiz üye numarası!");
+    return;
+  }
+  
+  const date = new Date(dateInput);
+  const toplam = sabah + aksam;
+  
+  if(!milkData[memberNo]) milkData[memberNo] = [];
+  
+  if(editIndex !== ""){
+    // Düzenleme modu
+    const idx = parseInt(editIndex);
+    milkData[memberNo][idx] = {date, sabah, aksam, toplam};
+    alert("✅ Kayıt başarıyla güncellendi!");
+  } else {
+    // Yeni kayıt
+    milkData[memberNo].push({date, sabah, aksam, toplam});
+    alert("✅ Yeni kayıt başarıyla eklendi!");
+  }
+  
+  localStorage.setItem("milkData", JSON.stringify(milkData));
+  hideAddMilk();
+  loadMilkData();
+}
+
+function editMilkRecord(memberNo, index){
+  const record = milkData[memberNo][index];
+  const date = new Date(record.date);
+  
+  document.getElementById("addMilkForm").style.display = "block";
+  document.getElementById("milkFormTitle").innerText = "✏️ Süt Kaydını Düzenle";
+  document.getElementById("editMilkIndex").value = index;
+  document.getElementById("editMilkMemberNo").value = memberNo;
+  
+  // Tarih formatı YYYY-MM-DD
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  document.getElementById("newMilkDate").value = `${year}-${month}-${day}`;
+  
+  document.getElementById("newMilkMember").value = memberNo;
+  document.getElementById("newMilkMember").disabled = true;
+  document.getElementById("newMilkSabah").value = record.sabah;
+  document.getElementById("newMilkAksam").value = record.aksam;
+  
+  populateMemberFilter();
+  
+  // Scroll to form
+  document.getElementById("addMilkForm").scrollIntoView({behavior: 'smooth'});
+}
+
+function deleteMilkRecord(memberNo, index){
+  if(!confirm("Bu kaydı silmek istediğinizden emin misiniz?")){
+    return;
+  }
+  
+  milkData[memberNo].splice(index, 1);
+  
+  // Eğer üyenin hiç kaydı kalmadıysa array'i tamamen sil
+  if(milkData[memberNo].length === 0){
+    delete milkData[memberNo];
+  }
+  
+  localStorage.setItem("milkData", JSON.stringify(milkData));
+  alert("✅ Kayıt silindi!");
+  loadMilkData();
+}
+
+function loadMilkData(){
+  const memberNo = document.getElementById("memberFilter").value;
+  const month = document.getElementById("monthFilterAdmin").value;
+  const tbody = document.getElementById("milkDataList");
+  tbody.innerHTML = "";
+  
+  let allData = [];
+  let totalSabah = 0, totalAksam = 0, totalToplam = 0;
+  let count = 0;
+  
+  Object.keys(milkData).forEach(no=>{
+    if(memberNo && no !== memberNo) return;
+    
+    milkData[no].forEach((record, index)=>{
+      const date = new Date(record.date);
+      if(month !== "all" && date.getMonth() != month) return;
+      
+      allData.push({
+        date,
+        no,
+        index,
+        name: members[no]?.name || "Bilinmeyen",
+        sabah: record.sabah,
+        aksam: record.aksam,
+        toplam: record.toplam
+      });
+    });
+  });
+  
+  // Tarihe göre sırala
+  allData.sort((a,b)=>b.date - a.date);
+  
+  allData.forEach(d=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${formatDate(d.date)}</td>
+      <td>${d.no}</td>
+      <td>${d.name}</td>
+      <td>${d.sabah.toFixed(1)}</td>
+      <td>${d.aksam.toFixed(1)}</td>
+      <td><b>${d.toplam.toFixed(1)}</b></td>
+      <td>
+        <button onclick="editMilkRecord('${d.no}', ${d.index})" style="background:#4facfe;padding:4px 8px;font-size:11px">✏️ Düzenle</button>
+        <button onclick="deleteMilkRecord('${d.no}', ${d.index})" style="background:#ff4444;padding:4px 8px;font-size:11px">🗑️ Sil</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    
+    totalSabah += d.sabah;
+    totalAksam += d.aksam;
+    totalToplam += d.toplam;
+    count++;
+  });
+  
+  // İstatistikler
+  document.getElementById("milkStats").innerHTML = `
+    <span class="stats-item">📊 Kayıt: ${count}</span>
+    <span class="stats-item">🌅 Sabah: ${totalSabah.toFixed(1)} kg</span>
+    <span class="stats-item">🌙 Akşam: ${totalAksam.toFixed(1)} kg</span>
+    <span class="stats-item">🥛 Toplam: ${totalToplam.toFixed(1)} kg</span>
+  `;
+  
+  document.getElementById("milkCount").innerText = `Toplam: ${count} kayıt`;
+  
+  // Form'u kapat ve select'i tekrar aktif et
+  if(document.getElementById("addMilkForm").style.display !== "none"){
+    document.getElementById("newMilkMember").disabled = false;
+  }
+}
+
+function exportMilkData(){
+  const memberNo = document.getElementById("memberFilter").value;
+  const month = document.getElementById("monthFilterAdmin").value;
+  
+  let exportData = [["Tarih", "Üye No", "Üye Adı", "Sabah (kg)", "Akşam (kg)", "Toplam (kg)"]];
+  
+  Object.keys(milkData).forEach(no=>{
+    if(memberNo && no !== memberNo) return;
+    
+    milkData[no].forEach(record=>{
+      const date = new Date(record.date);
+      if(month !== "all" && date.getMonth() != month) return;
+      
+      exportData.push([
+        formatDate(date),
+        no,
+        members[no]?.name || "Bilinmeyen",
+        record.sabah,
+        record.aksam,
+        record.toplam
+      ]);
+    });
+  });
+  
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(exportData);
+  XLSX.utils.book_append_sheet(wb, ws, "Süt Verileri");
+  XLSX.writeFile(wb, "süt-verileri-rapor.xlsx");
+}
+
+/* ---------- CHART ---------- */
+function setType(type){
+  activeType = type;
+  
+  // Buton aktif durumunu güncelle
+  document.querySelectorAll('.chart-type-btn').forEach(btn=>btn.classList.remove('active'));
+  if(type==='sabah') document.getElementById('btnSabah').classList.add('active');
+  else if(type==='aksam') document.getElementById('btnAksam').classList.add('active');
+  else document.getElementById('btnToplam').classList.add('active');
+  
+  redraw();
+}
+
+function redraw(){
+  drawChart(activeUser,activeType);
+  updateUserStats();
+}
+
+function updateUserStats(){
+  if(!activeUser) return;
+  
+  let rows = milkData[activeUser] || [];
+  const m = monthSelect.value;
+  
+  if(m!=="all"){
+    rows = rows.filter(r=>new Date(r.date).getMonth()==m);
+  }
+  
+  let totalSabah = 0, totalAksam = 0, totalToplam = 0;
+  let kayitSayisi = rows.length;
+  
+  rows.forEach(r=>{
+    totalSabah += r.sabah;
+    totalAksam += r.aksam;
+    totalToplam += r.toplam;
+  });
+  
+  const monthNames = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+  const period = m==="all" ? "Toplam" : monthNames[m];
+  
+  document.getElementById("userStats").innerHTML = `
+    <h4 style="margin:0 0 10px 0">📊 ${period} İstatistikler</h4>
+    <span class="stats-item">📅 Kayıt: ${kayitSayisi} gün</span>
+    <span class="stats-item">🌅 Sabah: ${totalSabah.toFixed(1)} kg</span>
+    <span class="stats-item">🌙 Akşam: ${totalAksam.toFixed(1)} kg</span>
+    <span class="stats-item">🥛 Toplam: ${totalToplam.toFixed(1)} kg</span>
+    ${kayitSayisi > 0 ? `<span class="stats-item">📈 Ortalama: ${(totalToplam/kayitSayisi).toFixed(1)} kg/gün</span>` : ''}
+  `;
+}
+
+function drawChart(no,type){
+  if(chart) chart.destroy();
+
+  let rows = milkData[no] || [];
+  const m = monthSelect.value;
+
+  if(m!=="all"){
+    rows = rows.filter(r=>new Date(r.date).getMonth()==m);
+  }
+
+  const data = rows.map(r=>({x:new Date(r.date),y:r[type]}));
+
+  chart = new Chart(document.getElementById("chart"),{
+    type:"line",
+    data:{datasets:[{label:type.toUpperCase()+" Süt (kg)",data,borderWidth:2,tension:0.3,fill:false}]},
+    options:{
+      scales:{
+        x:{type:"time",time:{unit:"day"},title:{display:true,text:"Günler"}},
+        y:{title:{display:true,text:"Süt Miktarı (kg)"}}
+      }
+    }
+  });
+}
+
+// İlk sekmeyi aktif et
+window.addEventListener('load', ()=>{
+  document.getElementById("tabImport").classList.add("active");
+});
+</script>
+
+</body>
+</html>
